@@ -71,7 +71,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px soli
 .goal i{width:16px;height:16px;border-radius:50%;background:var(--line)}
 .goal i.on{background:var(--good)}
 .stage{display:grid;justify-items:center;gap:12px;padding-block:6px;text-align:center}
-.orb{width:116px;height:116px;border-radius:50%;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--accent) 55%,#fff),var(--accent));display:grid;place-items:center;font-size:40px;color:var(--accent-ink);box-shadow:0 10px 40px color-mix(in srgb,var(--accent) 35%,transparent);border:0;cursor:pointer}
+.orb{width:150px;height:150px;border-radius:50%;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--accent) 55%,#fff),var(--accent));display:grid;place-items:center;font-size:40px;color:var(--accent-ink);box-shadow:0 10px 40px color-mix(in srgb,var(--accent) 35%,transparent);border:0;cursor:pointer}
 .orb.think{background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--sun) 60%,#fff),var(--sun))}
 .orb.you{background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--good) 55%,#fff),var(--good))}
 .orb.listen{background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--bad) 55%,#fff),var(--bad))}
@@ -219,13 +219,13 @@ const hush=()=>{if(hasTTS)speechSynthesis.cancel();if(X)X.talking=false};
 // ================= VOICE IN =================
 // On its own website the mic button works and can listen hands-free. Inside the Claude app the mic is blocked, so you use your keyboard's mic.
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let micOK=!!SR&&window.top===window.self,micOn=false,recog=null;
-function listen(target,auto){if(!micOK)return;if(micOn){recog&&recog.stop();return}hush();
+let micOK=!!SR&&window.top===window.self,micOn=false,recog=null,autoBlocked=false,micDenied=false,typeMode=false;
+function listen(target,auto){if(!micOK)return;if(auto&&autoBlocked)return;if(micOn){recog&&recog.stop();return}hush();micDenied=false;
  try{recog=new SR();recog.lang="es-MX";recog.interimResults=true;let txt="";
   recog.onresult=e=>{txt=[...e.results].map(r=>r[0].transcript).join(" ").trim();const el=document.getElementById(target);if(el)el.value=txt;if(target==="dr")X.draft=txt;else X.rtyped=txt};
-  recog.onerror=e=>{if(["not-allowed","service-not-allowed","audio-capture"].includes(e.error)){micOK=false}};
+  recog.onerror=e=>{if(["not-allowed","service-not-allowed","audio-capture"].includes(e.error)){if(auto)autoBlocked=true;else micDenied=true}};
   recog.onend=()=>{micOn=false;paint();if(!txt){render();return}if(target==="dr")send();else rescueCheck()};
-  micOn=true;recog.start();paint()}catch(e){micOn=false;if(!auto)micOK=false;render()}}
+  micOn=true;recog.start();paint()}catch(e){micOn=false;if(auto)autoBlocked=true;else micDenied=true;render()}}
 
 // ================= A TRAINING SESSION =================
 let screen="home",X=null;
@@ -292,7 +292,7 @@ function program(){const c=cur();
 
 function paint(){const o=document.getElementById("orb"),st=document.getElementById("st");if(!o||!X)return;
  const m=X.busy?"think":micOn?"listen":X.talking?"talk":"you";o.className="orb "+m;o.textContent=m==="think"?"…":m==="listen"?"👂":m==="talk"?"🔊":"🎙️";
- if(st)st.textContent=m==="think"?"Pensando...":m==="listen"?"Te escucho...":m==="talk"?"Escucha":"Tu turno"}
+ if(st)st.textContent=m==="think"?"Pensando...":m==="listen"?"Te escucho... (toca para terminar)":m==="talk"?"Escucha":micOK&&!typeMode?"Toca el círculo y habla":"Tu turno"}
 function setScr(){const T=TOPICS[X.t],R=RUNGS[X.r],L=X.last;
  const goal=X.free?"":`<div class="goalrow"><div class="goal">${Array.from({length:R.need},(_,i)=>`<i class="${i<X.count?"on":""}"></i>`).join("")}</div></div>`;
  app.innerHTML=`<div class="bar"><button class="back" data-end aria-label="Terminar">←</button><h1>${T.e} ${X.free?"Charla libre":R.n}</h1><button class="pill" data-end>Terminar</button></div>
@@ -303,7 +303,8 @@ function setScr(){const T=TOPICS[X.t],R=RUNGS[X.r],L=X.last;
  ${X.err?`<p class="err">${esc(X.err)}</p>`:""}</div>
  ${X.rescue?rescueBox():X.mine?`<div class="mine"><span class="who">Tú</span><span>${esc(X.mine)}</span></div>`:""}
  ${!X.rescue?`<div style="margin-top:10px"><button class="pill" data-kit aria-pressed="${X.kit}">🧩 Piezas</button></div>${X.kit?`<div class="kit" style="margin-top:8px">${kitRow(T.kit)}<span class="who" style="text-align:center">Si te trabas</span>${kitRow(RESCUE)}</div>`:""}`:""}
- ${!X.rescue?`<div class="composer"><div class="rowc"><textarea id="dr" rows="2" lang="es" placeholder="${micOK?"Toca 🎙️ y habla":"Toca aquí y usa el 🎤 del teclado"}" autocapitalize="sentences">${esc(X.draft)}</textarea>${micOK?`<button class="micb ${micOn?"on":""}" data-mic aria-label="Hablar">${micOn?"■":"🎙️"}</button>`:""}<button class="send" data-send ${X.busy?"disabled":""} aria-label="Enviar">↑</button></div>
+ ${!X.rescue&&micOK&&!typeMode?`<div class="composer">${micDenied?`<p class="err">The mic was blocked. Tap the circle again and choose Allow. If it keeps failing: iPhone Settings, Safari, Microphone, Allow.</p>`:X.mine?`<p class="hint" style="text-align:center">Tap the circle, talk, then stop. It sends by itself.</p>`:`<p class="hint" style="text-align:center">Tap the circle, talk, then stop. It sends by itself. Stuck on a word? Say it in English.</p>`}<button class="pill" data-type style="justify-self:center">⌨️ Escribir</button></div>`:""}
+ ${!X.rescue&&(!micOK||typeMode)?`<div class="composer"><div class="rowc"><textarea id="dr" rows="2" lang="es" placeholder="${micOK?"Escribe...":"Toca aquí y usa el 🎤 del teclado"}" autocapitalize="sentences">${esc(X.draft)}</textarea>${micOK?`<button class="micb ${micOn?"on":""}" data-mic aria-label="Hablar">${micOn?"■":"🎙️"}</button>`:""}<button class="send" data-send ${X.busy?"disabled":""} aria-label="Enviar">↑</button></div>${micOK?`<button class="pill" data-type style="justify-self:center">🎙️ Volver a hablar</button>`:""}
  ${!micOK&&S.sessions.length<3?`<p class="hint">Tap the box, switch to your Spanish keyboard (🌐), then tap the keyboard's 🎤 and talk. Stuck on a word? Say it in English. You'll get the Spanish and say it again before moving on.</p>`:""}</div>`:""}`;
  paint()}
 function rescueBox(){const R=X.rescue,sc=R.score!==undefined?Math.round(R.score*100):null;
@@ -359,6 +360,7 @@ app.addEventListener("click",async e=>{const b=e.target.closest("button");if(!b|
  if(d.rdone!==undefined){rescueDone();return}
  if(d.rate){S.rate=+d.rate;save();render();speak("Así hablo ahora.");return}
  if(d.showtext!==undefined){S.showText=d.showtext==="1";save();render();return}
+ if(d.type!==undefined){typeMode=!typeMode;render();return}
  if(d.hands!==undefined){S.hands=d.hands==="1";save();render();return}
  if(d.savekey!==undefined){const k=(document.getElementById("gk").value||"").trim();if(!k)return;S.gkey=k;S.gmodel="";KS={ok:true,msg:"Probando..."};render();
   try{await pickModel();const r=await askJSON('Reply with ONLY JSON {"reply":"¡Hola!"}',[],null);KS={ok:!!(r&&r.reply),msg:r&&r.reply?"Funciona. Ya puedes entrenar.":"The key works but the reply was empty. Try again."}}catch(err){KS={ok:false,msg:errMsg(err)}}
